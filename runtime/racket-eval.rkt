@@ -222,7 +222,7 @@
                  ; implement modules [see eval-module]
                  [compile-allow-set!-undefined #f])
     (match s-exp 
-      [(? bytecode? bc) (bytecode->zo bc ns)]
+      [(? bytecode? bc) (bytecode->zo bc)]
       [_                (define bc (s-exp->bytecode s-exp ns))
                         (bytecode->zo bc)])))
 
