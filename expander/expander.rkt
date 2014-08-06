@@ -6,7 +6,7 @@
 ;;; Macro Expander for Racket
 ;;;
 
-; Racket's normal expander are implemented in C.
+; Racket's normal expander is implemented in C.
 ; This is an attempt to implement expand in Racket.
 
 ; This version focuses on the expansion of kernel forms.

@@ -171,7 +171,7 @@
                   (namespace-require 'racket/base)
                   ; racket/list is imported to make tests more interesting
                   ; The racket/list module provides procedures implemented in Racket
-                  ; (we need to test that application works with both primitive and procedures)
+                  ; (we need to test that application works with both primitives and procedures)
                   (namespace-require/copy 'racket/list))
                 ns]
     [(current) (current-namespace)]
