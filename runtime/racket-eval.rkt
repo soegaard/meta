@@ -1,5 +1,12 @@
 #lang racket/base
-(require unstable/syntax) ; for phase-of-enclosing-module
+
+;;; HISTORY
+;;    2016-July-22
+;;      - removed dependcy on unstable/syntax
+;;      - fixed handling of compilation-top and prefix
+;;        (since 2014:
+;;              compilation-top has gained the field binding-namess
+;;         and  prefix          has gained the field src-inspector-desc
 
 ;;; Jens Axel Søgaard, July 2014
 ;;; Goal: Understand how bytecodes work in Racket.
@@ -51,6 +58,17 @@
          racket/port racket/match racket/list racket/path racket/format
          ; a couple of test macros use syntax/parse
          (for-syntax syntax/parse racket/base))
+
+; SYNTAX (phase-of-enclosing-module)
+;   Returns the phase level of the module in which the form occurs
+;   (and for the instantiation of the module in which the form is executed).
+;   For example, if a module is required directly by the “main” module
+;   (or the top level), its phase level is 0. If a module is required for-syntax
+;   by the “main” module (or the top level), its phase level is 1.
+;   (This used to be in unstable/syntax)
+(define-syntax-rule (phase-of-enclosing-module)
+  (variable-reference->module-base-phase (#%variable-reference)))
+
 ;;;
 ;;; OVERVIEW
 ;;;
@@ -299,7 +317,8 @@
 ;  convert a zo representing a syntax-object
 ;  the conversion was made by imitating the output of (s-exp->zo '#'x))
 (define (stx->syntax stx)
-  (racket-eval-zo (compilation-top 0 (prefix 0 '() (list stx)) (topsyntax 0 0 0))))
+  (racket-eval-zo (compilation-top 0 (hash) (prefix 0 '() (list stx) 'some-inspector)
+                                   (topsyntax 0 0 0))))
 
 ;;;
 ;;; LOCAL VARIABLES AND THE STACK REGISTER
@@ -349,8 +368,8 @@
 ; get-primitive : index -> primitive
 (define (get-primitive index)
   ; todo: cache these in a vector
-  (racket-eval-zo (compilation-top 0 (prefix 0 '() '()) (primval index))))
-
+  (racket-eval-zo (compilation-top 0 (hash) (prefix 0 '() '() 'some-inspector)
+                                   (primval index))))
 
 ; When reading bytecode it is convenient to see a name instead,
 ; so we need a table that maps the index to the name of the primitive.
@@ -386,7 +405,7 @@
       (define (symbol->index sym)
         (with-handlers ([exn:fail? (lambda (x) #f)])
           (match (compile-zo sym)
-            [(struct compilation-top (_ prefix (struct primval (n)))) n]
+            [(struct compilation-top (_ __ prefix (struct primval (n)))) n]
             [else #f])))
       ; we will store out results in a hash-table
       (define table (make-hash))
@@ -517,7 +536,7 @@
 ; eval-top : compilation-top -> value(s)
 (define (eval-top top)
   (match top
-    [(struct compilation-top (max-let-depth prefix form))
+    [(struct compilation-top (max-let-depth binding-namess prefix form)) ; TODO (binding-namess)
      ; the prefix describes an array of variables that must be pushed to the stack ...
      (define array (eval-prefix prefix))
      (set! stack (mlist array))
@@ -656,7 +675,7 @@
 ; eval-prefix : prefix -> vector
 (define (eval-prefix a-prefix)
   (match a-prefix
-    [(struct prefix (num-lifts toplevels stxs))
+    [(struct prefix (num-lifts toplevels stxs src-inspector-desc)) ; TODO (src-inspector-desc)
      ; allocate array
      (define size (+ (length toplevels) (length stxs) (if (null? stxs) 0 1) num-lifts))
      (define array (make-vector size #f)) ; could use undefined here (but #f prints smaller)
@@ -1231,6 +1250,7 @@
         lang-info   ; optional module-path for info (used by module->lang-info)
         internal-context ; internal-module-context lexical context of the body
         ;                ; #t #f stx or vector of stx
+        binding-names ; TODO new
         flags       ; list of symbols, there 'cross-phase indicates the module-body
         ;           ; is evaluated once and results shared across all phases
         pre-submodules  ; module declared submodules
@@ -1421,10 +1441,12 @@
 ; (check-equal? (eval-zo program24)  (racket-eval-zo program24))
 (check-equal? (syntax->datum (eval-zo program24)) 42)
 
+(verbose "program25")
 (define program25 ; toplevel require
   (compile-zo '(begin (require racket/port) port->list)))
 ; (check-equal? (eval-zo program25) port->list) ; works but are not equal? ???
 
+(verbose "program26")
 ; Are lambda, case-lambe and let-rec producing closures?
 (define program26a '(let ([x 41]) (λ (y) (list x y))))
 (define program26b '(let ([x 41]) (case-lambda [(y) (list x y)] [(y z) (list x y z)])))
@@ -1447,6 +1469,7 @@
 (check-true   (eval-zo `(,program26c 4)))
 (check-false  (eval-zo `(,program26c 5)))
 
+(verbose "program27")
 (use-current)
 (define program27 ; seq-for-syntax
   '(begin (define x 40) (begin-for-syntax (define x 41)) x))
@@ -1454,6 +1477,7 @@
   (check-equal? (eval-zo program27) 40))
 
 
+(verbose "program28")
 (use-current)
 (parameterize ([current-namespace (variable-reference->namespace (#%variable-reference))])
 ; (with-start-namespace (dynamic-require-for-syntax 'racket/base 0)
@@ -1462,6 +1486,7 @@
                                  x))
                 1))
 
+(verbose "R6RS TEST SUITE")
 (use-start)
 ;;;
 ;;; FROM THE R6RS TEST SUITE
